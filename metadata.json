@@ -1,0 +1,7 @@
+{
+  "name": "Bamboo Budget",
+  "description": "Bamboo Budget - A smart travel companion that helps you track expenses with the flexibility and strength of bamboo.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
