@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Plane, Calendar, ChevronRight, Wallet, ArrowLeft, PieChart, ChevronDown, ChevronUp, Sprout } from 'lucide-react';
+import { Plus, Plane, Calendar, ChevronRight, Wallet, ArrowLeft, PieChart, ChevronDown, ChevronUp, Sprout, Settings, Briefcase, Moon, Sun, Monitor } from 'lucide-react';
 import { format } from 'date-fns';
-import { Trip, Expense, ViewState } from './types';
+import { Trip, Expense, ViewState, ThemeMode } from './types';
 import * as Storage from './services/storageService';
 import ExpenseCard from './components/ExpenseCard';
 import AddExpenseModal from './components/AddExpenseModal';
@@ -40,6 +40,87 @@ const useContainerDimensions = (myRef: React.RefObject<HTMLDivElement | null>) =
 type ListItem = 
   | { type: 'HEADER'; date: string; total: number; isCollapsed: boolean }
   | { type: 'EXPENSE'; expense: Expense };
+
+// --- Settings View Component ---
+interface SettingsViewProps {
+  theme: ThemeMode;
+  onThemeChange: (mode: ThemeMode) => void;
+}
+
+const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange }) => {
+  return (
+    <div className="max-w-md mx-auto min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors">
+       <header className="p-6 pt-12">
+        <div className="flex items-center gap-3 mb-1">
+             <div className="bg-slate-200 dark:bg-slate-800 p-2 rounded-xl text-slate-700 dark:text-slate-200">
+                <Settings size={32} />
+             </div>
+            <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">設定</h1>
+        </div>
+      </header>
+
+      <main className="px-6 flex-1">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800 mb-6">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">外觀顯示</h3>
+          
+          <div className="space-y-3">
+            {/* Light Mode */}
+            <button 
+              onClick={() => onThemeChange('light')}
+              className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                theme === 'light' 
+                  ? 'border-primary bg-primary/5 text-primary' 
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Sun size={20} />
+                <span className="font-medium">淺色模式</span>
+              </div>
+              {theme === 'light' && <div className="w-3 h-3 rounded-full bg-primary"></div>}
+            </button>
+
+            {/* Dark Mode */}
+            <button 
+              onClick={() => onThemeChange('dark')}
+              className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                theme === 'dark' 
+                  ? 'border-primary bg-primary/5 text-primary' 
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Moon size={20} />
+                <span className="font-medium">深色模式</span>
+              </div>
+              {theme === 'dark' && <div className="w-3 h-3 rounded-full bg-primary"></div>}
+            </button>
+
+            {/* System Mode */}
+            <button 
+              onClick={() => onThemeChange('system')}
+              className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                theme === 'system' 
+                  ? 'border-primary bg-primary/5 text-primary' 
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Monitor size={20} />
+                <span className="font-medium">依系統設定</span>
+              </div>
+              {theme === 'system' && <div className="w-3 h-3 rounded-full bg-primary"></div>}
+            </button>
+          </div>
+        </div>
+        
+        <div className="text-center text-xs text-slate-400 dark:text-slate-600 mt-8">
+          Bamboo Budget v1.1.0
+        </div>
+      </main>
+    </div>
+  );
+};
 
 // --- Trip Detail Component ---
 interface TripDetailViewProps {
@@ -307,6 +388,7 @@ const App: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [theme, setTheme] = useState<ThemeMode>(Storage.getThemePreference());
   
   // Modals
   const [isAddTripOpen, setIsAddTripOpen] = useState(false);
@@ -322,6 +404,34 @@ const App: React.FC = () => {
   useEffect(() => {
     setTrips(Storage.getTrips());
   }, []);
+
+  // Theme Effect
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    Storage.saveThemePreference(theme);
+  }, [theme]);
+
+  // System Theme Listener
+  useEffect(() => {
+      if (theme !== 'system') return;
+
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => {
+          const root = window.document.documentElement;
+          if (mediaQuery.matches) root.classList.add('dark');
+          else root.classList.remove('dark');
+      };
+
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
 
   // Load expenses when entering a trip
   useEffect(() => {
@@ -407,7 +517,7 @@ const App: React.FC = () => {
   // --- Views ---
 
   const renderHome = () => (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col">
+    <div className="max-w-md mx-auto min-h-screen flex flex-col pb-20">
       <header className="p-6 pt-12">
         <div className="flex items-center gap-3 mb-1">
              <div className="bg-primary/10 dark:bg-primary/20 p-2 rounded-xl text-primary">
@@ -460,7 +570,7 @@ const App: React.FC = () => {
 
       <button 
         onClick={() => setIsAddTripOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-slate-900 dark:bg-slate-700 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-slate-800 dark:hover:bg-slate-600 active:scale-90 transition-all"
+        className="fixed bottom-24 right-6 w-14 h-14 bg-slate-900 dark:bg-slate-700 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-slate-800 dark:hover:bg-slate-600 active:scale-90 transition-all z-20"
       >
         <Plus size={28} />
       </button>
@@ -477,19 +587,25 @@ const App: React.FC = () => {
               onChange={e => setNewTripName(e.target.value)}
               autoFocus
             />
-            <div className="grid grid-cols-2 gap-3 mb-6">
-                <input 
-                    type="date" 
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
-                    value={newTripStart}
-                    onChange={e => setNewTripStart(e.target.value)}
-                />
-                 <input 
-                    type="date" 
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
-                    value={newTripEnd}
-                    onChange={e => setNewTripEnd(e.target.value)}
-                />
+            <div className="flex flex-col gap-3 mb-6">
+                <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 ml-1">開始日期</label>
+                    <input 
+                        type="date" 
+                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
+                        value={newTripStart}
+                        onChange={e => setNewTripStart(e.target.value)}
+                    />
+                </div>
+                <div>
+                     <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 ml-1">結束日期</label>
+                     <input 
+                        type="date" 
+                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
+                        value={newTripEnd}
+                        onChange={e => setNewTripEnd(e.target.value)}
+                    />
+                </div>
             </div>
             <div className="flex gap-3">
               <button 
@@ -511,22 +627,48 @@ const App: React.FC = () => {
     </div>
   );
 
+  const BottomNav = () => (
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 p-2 pb-safe z-40 flex justify-around items-center transition-colors">
+          <button 
+            onClick={() => setView('HOME')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all w-20 ${view === 'HOME' ? 'text-primary' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
+          >
+             <Briefcase size={24} className={view === 'HOME' ? 'fill-current' : ''} strokeWidth={view === 'HOME' ? 2.5 : 2}/>
+             <span className="text-[10px] font-medium">行程</span>
+          </button>
+          <button 
+            onClick={() => setView('SETTINGS')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all w-20 ${view === 'SETTINGS' ? 'text-primary' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
+          >
+             <Settings size={24} className={view === 'SETTINGS' ? 'fill-current' : ''} strokeWidth={view === 'SETTINGS' ? 2.5 : 2}/>
+             <span className="text-[10px] font-medium">設定</span>
+          </button>
+      </div>
+  );
+
   return (
     <>
-        {view === 'HOME' ? renderHome() : (
-            activeTrip && (
-                <TripDetailView 
-                    trip={activeTrip}
-                    expenses={expenses}
-                    onBack={() => setView('HOME')}
-                    onAddExpense={handleOpenAddExpense}
-                    onEditExpense={handleOpenEditExpense}
-                    onDeleteExpense={handleDeleteExpense}
-                    onToggleRepaid={toggleRepayment}
-                />
-            )
+        {view === 'HOME' && renderHome()}
+        
+        {view === 'SETTINGS' && (
+            <SettingsView theme={theme} onThemeChange={setTheme} />
+        )}
+
+        {view === 'TRIP_DETAIL' && activeTrip && (
+            <TripDetailView 
+                trip={activeTrip}
+                expenses={expenses}
+                onBack={() => setView('HOME')}
+                onAddExpense={handleOpenAddExpense}
+                onEditExpense={handleOpenEditExpense}
+                onDeleteExpense={handleDeleteExpense}
+                onToggleRepaid={toggleRepayment}
+            />
         )}
         
+        {/* Bottom Nav - Only show on main screens */}
+        {(view === 'HOME' || view === 'SETTINGS') && <BottomNav />}
+
         <AddExpenseModal 
             isOpen={isAddExpenseOpen}
             tripId={activeTripId!}
@@ -550,6 +692,10 @@ const App: React.FC = () => {
             }
             .animate-fade-in {
                 animation: fade-in 0.3s ease-out forwards;
+            }
+            /* Safe area support for iPhones without home button */
+            .pb-safe {
+                padding-bottom: env(safe-area-inset-bottom, 20px);
             }
         `}</style>
     </>

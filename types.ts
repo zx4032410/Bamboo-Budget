@@ -32,7 +32,9 @@ export interface Trip {
   budgetTWD?: number;
 }
 
-export type ViewState = 'HOME' | 'TRIP_DETAIL';
+export type ViewState = 'HOME' | 'TRIP_DETAIL' | 'SETTINGS';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface GeminiAnalysisResult {
   storeName: string;
