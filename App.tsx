@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Plane, Calendar, ChevronRight, Wallet, ArrowLeft, PieChart, ChevronDown, ChevronUp, Sprout, Settings, Briefcase, Moon, Sun, Monitor, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Plane, Calendar, ChevronRight, Wallet, ArrowLeft, PieChart, ChevronDown, ChevronUp, Sprout, Settings, Briefcase, Moon, Sun, Monitor, Trash2, AlertCircle, Loader2, User, LogOut, Link as LinkIcon, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Trip, Expense, ViewState, ThemeMode } from './types';
 import * as Storage from './services/storageService';
 import ExpenseCard from './components/ExpenseCard';
 import AddExpenseModal from './components/AddExpenseModal';
+import { auth, googleProvider } from './firebaseConfig';
+import { signInAnonymously, onAuthStateChanged, linkWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 
 // --- Types for List ---
 type ListItem = 
@@ -25,9 +27,54 @@ interface RowActions {
 interface SettingsViewProps {
   theme: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
+  user: FirebaseUser | null;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange, user }) => {
+  const [isLinking, setIsLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  const handleLinkGoogle = async () => {
+    if (!user) return;
+    setIsLinking(true);
+    setLinkError(null);
+    try {
+        await linkWithPopup(user, googleProvider);
+        // Success! The anonymous account is now a Google account.
+        alert("帳號連結成功！您的訪客資料現在已與 Google 帳號永久綁定。");
+    } catch (error: any) {
+        console.error("Linking error details:", error);
+        
+        let errorMessage = `連結失敗 (${error.code || 'Unknown'})`;
+        
+        if (error.code === 'auth/credential-already-in-use') {
+            errorMessage = "此 Google 帳號已被其他使用者綁定。請登出後直接使用 Google 登入（注意：目前的訪客資料無法自動合併）。";
+        } else if (error.code === 'auth/popup-closed-by-user') {
+            errorMessage = "登入視窗已關閉，或被瀏覽器攔截。";
+        } else if (error.code === 'auth/cancelled-popup-request') {
+            errorMessage = "偵測到重複的登入請求，請稍後再試。";
+        } else if (error.code === 'auth/unauthorized-domain') {
+            // Explicitly show the hostname so user can copy-paste
+            errorMessage = `網域權限錯誤。\n\n目前網址：${window.location.hostname}\n\n1. 請確認 Firebase Console > Authentication > Settings > Authorized domains 已包含上方網址 (完全一致)。\n2. 若剛新增，請等待 5-10 分鐘讓設定生效。\n3. 請重新整理網頁後再試。`;
+        } else if (error.code === 'auth/operation-not-allowed') {
+            errorMessage = "Google 登入功能未啟用。請至 Firebase Console > Authentication > Sign-in method 開啟 Google 登入提供者。";
+        } else if (error.message) {
+             errorMessage = `錯誤：${error.message}`;
+        }
+        
+        setLinkError(errorMessage);
+    } finally {
+        setIsLinking(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+      if (window.confirm("確定要登出嗎？")) {
+          await signOut(auth);
+          // App component will handle re-login anonymously
+      }
+  };
+
   return (
     <div className="max-w-md mx-auto min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors">
        <header className="p-6 pt-12">
@@ -40,6 +87,66 @@ const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange }) => 
       </header>
 
       <main className="px-6 flex-1">
+        
+        {/* Account Section */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800 mb-6">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">帳號設定</h3>
+          
+          {user ? (
+             <div className="space-y-4">
+                 <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                     <div className={`p-2 rounded-full ${user.isAnonymous ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                         <User size={20} />
+                     </div>
+                     <div className="flex-1 min-w-0">
+                         <div className="font-medium text-slate-900 dark:text-white truncate">
+                             {user.isAnonymous ? "訪客 (未備份)" : (user.displayName || user.email)}
+                         </div>
+                         <div className="text-xs text-slate-500 dark:text-slate-400">
+                             {user.isAnonymous ? "資料僅儲存於此裝置" : "資料已同步至雲端"}
+                         </div>
+                     </div>
+                 </div>
+
+                 {user.isAnonymous ? (
+                     <div className="space-y-2">
+                        <button 
+                            onClick={handleLinkGoogle}
+                            disabled={isLinking}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/30"
+                        >
+                            {isLinking ? <Loader2 size={20} className="animate-spin" /> : <LinkIcon size={20} />}
+                            備份資料 (連結 Google)
+                        </button>
+                        <p className="text-xs text-slate-400 text-center px-2">
+                            連結後，您的訪客資料將會保留，並可於其他裝置登入存取。
+                        </p>
+                        {linkError && (
+                            <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs rounded-lg flex items-start gap-2">
+                                <AlertCircle size={14} className="shrink-0 mt-0.5"/>
+                                {/* whitespace-pre-wrap ensures newlines in error message are respected */}
+                                <span className="break-all whitespace-pre-wrap">{linkError}</span>
+                            </div>
+                        )}
+                     </div>
+                 ) : (
+                     <button 
+                        onClick={handleSignOut}
+                        className="w-full py-3 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                        <LogOut size={20} />
+                        登出
+                    </button>
+                 )}
+             </div>
+          ) : (
+              <div className="text-center py-4">
+                  <Loader2 size={24} className="animate-spin mx-auto text-primary" />
+              </div>
+          )}
+        </div>
+
+        {/* Appearance Section */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800 mb-6">
           <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">外觀顯示</h3>
           
@@ -95,7 +202,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange }) => 
         </div>
         
         <div className="text-center text-xs text-slate-400 dark:text-slate-600 mt-8">
-          Bamboo Budget v1.1.0
+          Bamboo Budget v1.4.2 (Offline Capable)
         </div>
       </main>
     </div>
@@ -106,6 +213,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange }) => 
 interface TripDetailViewProps {
     trip: Trip;
     expenses: Expense[];
+    isLoading: boolean;
     onBack: () => void;
     onAddExpense: () => void;
     onEditExpense: (expense: Expense) => void;
@@ -157,6 +265,7 @@ const ExpenseRow: React.FC<{ item: ListItem; actions: RowActions }> = ({ item, a
 const TripDetailView: React.FC<TripDetailViewProps> = ({
     trip,
     expenses,
+    isLoading,
     onBack,
     onAddExpense,
     onEditExpense,
@@ -175,11 +284,16 @@ const TripDetailView: React.FC<TripDetailViewProps> = ({
     const groupedExpenses = useMemo(() => {
         const groups: Record<string, Expense[]> = {};
         expenses.forEach(expense => {
-            const dateKey = format(new Date(expense.date), 'yyyy-MM-dd');
-            if (!groups[dateKey]) {
-                groups[dateKey] = [];
+            try {
+                const dateKey = format(new Date(expense.date), 'yyyy-MM-dd');
+                if (!groups[dateKey]) {
+                    groups[dateKey] = [];
+                }
+                groups[dateKey].push(expense);
+            } catch (e) {
+                // Handle invalid dates gracefully
+                console.warn("Invalid date for expense", expense);
             }
-            groups[dateKey].push(expense);
         });
         return groups;
     }, [expenses]);
@@ -276,14 +390,26 @@ const TripDetailView: React.FC<TripDetailViewProps> = ({
             
             <div className="flex-shrink-0 flex items-center justify-between mb-2 px-5 pt-4">
                 <h2 className="font-bold text-slate-700 dark:text-slate-300 text-sm">消費明細</h2>
-                <span className="text-xs text-slate-400 dark:text-slate-500">{expenses.length} 筆紀錄</span>
+                <div className="flex items-center gap-2">
+                     {isLoading && <Loader2 size={14} className="animate-spin text-primary"/>}
+                     <span className="text-xs text-slate-400 dark:text-slate-500">{expenses.length} 筆紀錄</span>
+                </div>
             </div>
 
             <div className="flex-1 w-full overflow-y-auto">
                 {expenses.length === 0 ? (
                     <div className="text-center py-12 text-slate-400 dark:text-slate-600">
-                        <p>還沒有消費紀錄</p>
-                        <p className="text-sm mt-2">點擊 + 按鈕新增第一筆消費</p>
+                        {isLoading ? (
+                           <div className="flex flex-col items-center">
+                               <Loader2 size={24} className="animate-spin mb-2"/>
+                               <p>讀取中...</p>
+                           </div>
+                        ) : (
+                           <>
+                             <p>還沒有消費紀錄</p>
+                             <p className="text-sm mt-2">點擊 + 按鈕新增第一筆消費</p>
+                           </>
+                        )}
                     </div>
                 ) : (
                     <div className="pb-24 pt-2">
@@ -314,11 +440,22 @@ const TripDetailView: React.FC<TripDetailViewProps> = ({
 
 const App: React.FC = () => {
   // State
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [view, setView] = useState<ViewState>('HOME');
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [theme, setTheme] = useState<ThemeMode>(Storage.getThemePreference());
+  
+  // Derived state
+  const activeTrip = useMemo(() => trips.find(t => t.id === activeTripId), [trips, activeTripId]);
+  
+  // Loading States
+  const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Modals
   const [isAddTripOpen, setIsAddTripOpen] = useState(false);
@@ -334,9 +471,37 @@ const App: React.FC = () => {
   const [newTripEnd, setNewTripEnd] = useState('');
   const [addTripError, setAddTripError] = useState<string | null>(null);
 
-  // Load data on mount
+  // --- Auth & Initial Data Loading ---
   useEffect(() => {
-    setTrips(Storage.getTrips());
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+            // User is signed in (anonymous or real)
+            setUser(currentUser);
+            setAuthLoading(false);
+            // Load trips immediately
+            setIsLoadingTrips(true);
+            try {
+                const fetchedTrips = await Storage.fetchTrips();
+                setTrips(fetchedTrips);
+            } catch (e) {
+                console.error("Failed to load trips", e);
+            } finally {
+                setIsLoadingTrips(false);
+            }
+        } else {
+            // No user, sign in anonymously immediately
+            try {
+                // This ensures the user gets an ID without seeing a login screen
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Anonymous Auth Failed", error);
+                // If offline and first time, this might fail, but persistence handles subsequent opens
+                setAuthLoading(false);
+            }
+        }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Theme Effect
@@ -369,19 +534,28 @@ const App: React.FC = () => {
 
   // Load expenses when entering a trip
   useEffect(() => {
-    if (activeTripId) {
-      const tripExpenses = Storage.getExpensesForTrip(activeTripId);
-      // Sort by date descending (newest first)
-      tripExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setExpenses(tripExpenses);
+    if (activeTripId && user) {
+      const loadExpenses = async () => {
+          setIsLoadingExpenses(true);
+          try {
+             const tripExpenses = await Storage.fetchExpensesForTrip(activeTripId);
+             setExpenses(tripExpenses);
+          } catch (e) {
+             console.error("Failed to load expenses", e);
+          } finally {
+             setIsLoadingExpenses(false);
+          }
+      };
+      loadExpenses();
     }
-  }, [activeTripId]);
+  }, [activeTripId, user]);
 
-  const handleCreateTrip = () => {
+  const handleCreateTrip = async () => {
     if (!newTripName) {
         setAddTripError("請輸入旅程名稱");
         return;
     }
+    if (!user) return;
 
     if (newTripStart && newTripEnd) {
         if (newTripEnd < newTripStart) {
@@ -390,19 +564,28 @@ const App: React.FC = () => {
         }
     }
 
-    const trip: Trip = {
-      id: uuidv4(),
-      name: newTripName,
-      startDate: newTripStart || new Date().toISOString(),
-      endDate: newTripEnd || new Date().toISOString()
-    };
-    Storage.saveTrip(trip);
-    setTrips([...trips, trip]);
-    setIsAddTripOpen(false);
-    setNewTripName('');
-    setNewTripStart('');
-    setNewTripEnd('');
-    setAddTripError(null);
+    setIsSaving(true);
+    try {
+        const trip: Trip = {
+          id: uuidv4(),
+          userId: user.uid, // Explicitly set, though service handles it too
+          name: newTripName,
+          startDate: newTripStart || new Date().toISOString(),
+          endDate: newTripEnd || new Date().toISOString()
+        };
+        
+        await Storage.saveTrip(trip);
+        setTrips(prev => [...prev, trip]);
+        setIsAddTripOpen(false);
+        setNewTripName('');
+        setNewTripStart('');
+        setNewTripEnd('');
+        setAddTripError(null);
+    } catch (e) {
+        setAddTripError("建立失敗，請稍後再試");
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleDeleteTrip = (e: React.MouseEvent, id: string) => {
@@ -410,11 +593,16 @@ const App: React.FC = () => {
     setTripToDelete(id);
   }
 
-  const confirmDeleteTrip = () => {
+  const confirmDeleteTrip = async () => {
     if (tripToDelete) {
-        Storage.deleteTrip(tripToDelete);
-        setTrips(trips.filter(t => t.id !== tripToDelete));
-        setTripToDelete(null);
+        try {
+            await Storage.deleteTrip(tripToDelete);
+            setTrips(prev => prev.filter(t => t.id !== tripToDelete));
+        } catch (e) {
+            alert("刪除失敗");
+        } finally {
+            setTripToDelete(null);
+        }
     }
   }
 
@@ -433,65 +621,42 @@ const App: React.FC = () => {
       setIsAddExpenseOpen(true);
   }, []);
 
-  const handleSaveExpense = (expense: Expense) => {
-    const existingIndex = expenses.findIndex(e => e.id === expense.id);
-    let updatedExpenses;
-
-    if (existingIndex >= 0) {
-        Storage.updateExpense(expense);
-        updatedExpenses = [...expenses];
-        updatedExpenses[existingIndex] = expense;
-    } else {
-        Storage.saveExpense(expense);
-        updatedExpenses = [expense, ...expenses];
+  const handleSaveExpense = async (expense: Expense) => {
+    try {
+        if (editingExpense) {
+            await Storage.updateExpense(expense);
+            setExpenses(prev => prev.map(e => e.id === expense.id ? expense : e));
+        } else {
+            await Storage.saveExpense(expense);
+            setExpenses(prev => [expense, ...prev]);
+        }
+        // Re-sort
+        setExpenses(prev => [...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    } catch (e) {
+        alert("儲存失敗");
     }
-    
-    updatedExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    setExpenses(updatedExpenses);
   };
 
-  const handleDeleteExpense = useCallback((id: string) => {
-      // Explicitly check confirm result and ensure state update happens
+  const handleDeleteExpense = useCallback(async (id: string) => {
       if(window.confirm("確定要刪除這筆明細嗎？")) {
-          Storage.deleteExpense(id);
-          setExpenses(prev => prev.filter(e => e.id !== id));
+          try {
+             await Storage.deleteExpense(id);
+             setExpenses(prev => prev.filter(e => e.id !== id));
+          } catch (e) {
+             alert("刪除失敗");
+          }
       }
   }, []);
 
-  const toggleRepayment = useCallback((expense: Expense) => {
+  const toggleRepayment = useCallback(async (expense: Expense) => {
     const updated = { ...expense, isRepaid: !expense.isRepaid };
-    Storage.updateExpense(updated);
-    setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+    try {
+        await Storage.updateExpense(updated);
+        setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+    } catch (e) {
+        alert("更新狀態失敗");
+    }
   }, []);
-
-  const activeTrip = trips.find(t => t.id === activeTripId);
-
-  // --- Trip Grouping Logic ---
-  const tripsByYear = useMemo(() => {
-    const groups: Record<string, Trip[]> = {};
-    trips.forEach(trip => {
-      try {
-        const year = new Date(trip.startDate).getFullYear().toString();
-        if (!groups[year]) {
-          groups[year] = [];
-        }
-        groups[year].push(trip);
-      } catch (e) {
-        const year = "Other";
-        if (!groups[year]) groups[year] = [];
-        groups[year].push(trip);
-      }
-    });
-    return groups;
-  }, [trips]);
-
-  const sortedYears = useMemo(() => {
-    return Object.keys(tripsByYear).sort((a, b) => {
-        if (a === 'Other') return 1;
-        if (b === 'Other') return -1;
-        return Number(b) - Number(a);
-    });
-  }, [tripsByYear]);
 
   // --- Views ---
 
@@ -508,7 +673,17 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 px-6 pb-24">
-        {trips.length === 0 ? (
+        {authLoading ? (
+            <div className="flex flex-col items-center justify-center h-64">
+                <Loader2 size={32} className="animate-spin text-primary mb-2"/>
+                <p className="text-slate-500">初始化中...</p>
+            </div>
+        ) : isLoadingTrips ? (
+            <div className="flex flex-col items-center justify-center h-64 opacity-60">
+                <Loader2 size={32} className="animate-spin text-primary mb-2"/>
+                <p className="text-slate-500">讀取資料中...</p>
+            </div>
+        ) : trips.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center opacity-60">
                 <Plane size={48} className="mb-4 text-slate-300 dark:text-slate-600"/>
                 <p className="text-slate-500 dark:text-slate-400">還沒有行程</p>
@@ -516,11 +691,17 @@ const App: React.FC = () => {
             </div>
         ) : (
             <div className="space-y-8">
-                {sortedYears.map(year => (
+                {Object.keys(trips.reduce((acc, t) => {
+                    const y = new Date(t.startDate).getFullYear() || 'Other';
+                    if(!acc[y]) acc[y]=[]; acc[y].push(t); return acc;
+                }, {} as Record<string, Trip[]>))
+                .sort((a, b) => Number(b) - Number(a))
+                .map(year => (
                     <div key={year}>
                         <h2 className="text-2xl font-bold text-slate-300 dark:text-slate-700 mb-4 ml-1">{year}</h2>
                         <div className="space-y-4">
-                            {tripsByYear[year]
+                            {trips
+                                .filter(t => (new Date(t.startDate).getFullYear() || 'Other').toString() === year)
                                 .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
                                 .map(trip => (
                                     <div 
@@ -528,7 +709,6 @@ const App: React.FC = () => {
                                         onClick={() => openTrip(trip.id)}
                                         className="group relative bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden cursor-pointer active:scale-[0.99] transition-all hover:shadow-md"
                                     >
-                                        {/* Decorative Background */}
                                         <div className="absolute right-0 top-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-full -mr-10 -mt-10 transition-transform group-hover:scale-110 pointer-events-none"></div>
 
                                         <div className="relative z-10 p-5">
@@ -536,7 +716,6 @@ const App: React.FC = () => {
                                                 <div className="bg-emerald-100 dark:bg-emerald-900/30 p-3 rounded-xl text-emerald-600 dark:text-emerald-400">
                                                     <Plane size={24} />
                                                 </div>
-                                                {/* Delete Button - Explicit Z-index and hit area */}
                                                 <button 
                                                     onClick={(e) => handleDeleteTrip(e, trip.id)}
                                                     className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors -mr-2 -mt-2 z-20"
@@ -620,14 +799,17 @@ const App: React.FC = () => {
             <div className="flex gap-3">
               <button 
                 onClick={() => { setIsAddTripOpen(false); setAddTripError(null); }}
+                disabled={isSaving}
                 className="flex-1 py-3 rounded-xl font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 取消
               </button>
               <button 
                 onClick={handleCreateTrip}
-                className="flex-1 py-3 rounded-xl font-bold bg-primary text-white hover:bg-emerald-600 transition-colors"
+                disabled={isSaving}
+                className="flex-1 py-3 rounded-xl font-bold bg-primary text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
               >
+                {isSaving && <Loader2 size={16} className="animate-spin"/>}
                 建立
               </button>
             </div>
@@ -686,13 +868,14 @@ const App: React.FC = () => {
         {view === 'HOME' && renderHome()}
         
         {view === 'SETTINGS' && (
-            <SettingsView theme={theme} onThemeChange={setTheme} />
+            <SettingsView theme={theme} onThemeChange={setTheme} user={user} />
         )}
 
         {view === 'TRIP_DETAIL' && activeTrip && (
             <TripDetailView 
                 trip={activeTrip}
                 expenses={expenses}
+                isLoading={isLoadingExpenses}
                 onBack={() => setView('HOME')}
                 onAddExpense={handleOpenAddExpense}
                 onEditExpense={handleOpenEditExpense}

@@ -6,6 +6,7 @@ export interface ExpenseItem {
 export interface Expense {
   id: string;
   tripId: string;
+  userId: string; // Added: Ownership
   storeName: string;
   date: string; // ISO string
   items: ExpenseItem[]; // Updated from string[] to ExpenseItem[]
@@ -26,6 +27,7 @@ export interface Expense {
 
 export interface Trip {
   id: string;
+  userId: string; // Added: Ownership
   name: string;
   startDate: string;
   endDate: string;

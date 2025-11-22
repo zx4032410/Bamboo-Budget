@@ -1,143 +1,36 @@
-import { Trip, Expense, ExpenseItem, ThemeMode } from '../types';
+import { Trip, Expense, ThemeMode } from '../types';
+import { db, auth } from '../firebaseConfig';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  where, 
+  setDoc
+} from 'firebase/firestore';
 
-const TRIPS_KEY = 'trippy_trips';
-const EXPENSES_KEY = 'trippy_expenses';
+const TRIPS_COLLECTION = 'trips';
+const EXPENSES_COLLECTION = 'expenses';
 const THEME_KEY = 'trippy_theme';
 
-// Helper to migrate old string[] items to ExpenseItem[]
-const migrateExpenses = (expenses: any[]): Expense[] => {
-  return expenses.map(e => {
-    // Check if items is an array of strings (legacy data)
-    if (Array.isArray(e.items) && e.items.length > 0 && typeof e.items[0] === 'string') {
-      return {
-        ...e,
-        items: e.items.map((itemStr: string) => ({
-          name: itemStr,
-          originalName: itemStr
-        }))
-      };
-    }
-    // Ensure items is always an array
-    if (!e.items) {
-        return { ...e, items: [] };
-    }
-    return e as Expense;
-  });
-};
-
-// Helper to detect QuotaExceededError
-const isQuotaExceeded = (e: unknown) => {
-  return (
-    e instanceof DOMException &&
-    // everything except Firefox
-    (e.code === 22 ||
-      // Firefox
-      e.code === 1014 ||
-      // test name field too, because code might not be present
-      // everything except Firefox
-      e.name === 'QuotaExceededError' ||
-      // Firefox
-      e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
-    // acknowledge QuotaExceededError only if there's something already stored
-    (localStorage.length !== 0)
+// Helper to remove undefined fields because Firestore throws error on undefined
+const removeUndefined = (obj: any) => {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
   );
 };
 
-export const getTrips = (): Trip[] => {
-  const data = localStorage.getItem(TRIPS_KEY);
-  return data ? JSON.parse(data) : [];
+// Helper to get current User ID
+const getCurrentUserId = () => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("User not authenticated");
+    return user.uid;
 };
 
-export const saveTrip = (trip: Trip) => {
-  const trips = getTrips();
-  trips.push(trip);
-  try {
-    localStorage.setItem(TRIPS_KEY, JSON.stringify(trips));
-  } catch (e) {
-    if (isQuotaExceeded(e)) {
-      alert("儲存空間已滿，無法建立新旅程。請嘗試刪除舊資料或不含圖片的項目。");
-    } else {
-      console.error("Save trip failed", e);
-    }
-  }
-};
-
-export const deleteTrip = (id: string) => {
-  const trips = getTrips().filter(t => t.id !== id);
-  localStorage.setItem(TRIPS_KEY, JSON.stringify(trips));
-  
-  // Cleanup expenses
-  const allExpenses = getAllExpenses();
-  const remainingExpenses = allExpenses.filter(e => e.tripId !== id);
-  localStorage.setItem(EXPENSES_KEY, JSON.stringify(remainingExpenses));
-};
-
-export const getAllExpenses = (): Expense[] => {
-  const data = localStorage.getItem(EXPENSES_KEY);
-  const rawExpenses = data ? JSON.parse(data) : [];
-  return migrateExpenses(rawExpenses);
-};
-
-export const getExpensesForTrip = (tripId: string): Expense[] => {
-  return getAllExpenses().filter(e => e.tripId === tripId);
-};
-
-export const saveExpense = (expense: Expense) => {
-  const expenses = getAllExpenses();
-  expenses.push(expense);
-  try {
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  } catch (e) {
-    if (isQuotaExceeded(e)) {
-      // Fallback: Try saving without the image to save space
-      const expenseNoImg = { ...expense, receiptImage: undefined };
-      expenses.pop(); // Remove the failed one
-      expenses.push(expenseNoImg);
-      
-      try {
-        localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-        alert("儲存空間已滿。已儲存此筆消費，但圖片未被儲存。");
-      } catch (e2) {
-        alert("儲存空間嚴重不足，無法儲存此筆資料。請清理舊資料。");
-      }
-    } else {
-      console.error("Save expense failed", e);
-    }
-  }
-};
-
-export const updateExpense = (updatedExpense: Expense) => {
-  const allExpenses = getAllExpenses();
-  const expenses = allExpenses.map(e => e.id === updatedExpense.id ? updatedExpense : e);
-  
-  try {
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  } catch (e) {
-    if (isQuotaExceeded(e)) {
-      // Fallback: If updating and space is full, try removing image from the updated item
-      if (updatedExpense.receiptImage) {
-        const expenseNoImg = { ...updatedExpense, receiptImage: undefined };
-        const expensesRetry = allExpenses.map(e => e.id === expenseNoImg.id ? expenseNoImg : e);
-        try {
-           localStorage.setItem(EXPENSES_KEY, JSON.stringify(expensesRetry));
-           alert("儲存空間已滿。已更新資料，但移除了圖片以節省空間。");
-        } catch (e2) {
-           alert("儲存空間嚴重不足，無法更新資料。");
-        }
-      } else {
-        alert("儲存空間嚴重不足，無法更新資料。");
-      }
-    } else {
-      console.error("Update expense failed", e);
-    }
-  }
-};
-
-export const deleteExpense = (id: string) => {
-    const expenses = getAllExpenses().filter(e => e.id !== id);
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-}
-
+// --- Theme (Keep in LocalStorage for instant UI load) ---
 export const getThemePreference = (): ThemeMode => {
   const theme = localStorage.getItem(THEME_KEY);
   return (theme === 'light' || theme === 'dark' || theme === 'system') ? theme : 'system';
@@ -148,5 +41,142 @@ export const saveThemePreference = (theme: ThemeMode) => {
     localStorage.setItem(THEME_KEY, theme);
   } catch (e) {
     console.error("Failed to save theme preference", e);
+  }
+};
+
+// --- Trips (Firestore) ---
+
+export const fetchTrips = async (): Promise<Trip[]> => {
+  try {
+    const uid = getCurrentUserId();
+    const q = query(
+        collection(db, TRIPS_COLLECTION),
+        where("userId", "==", uid)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Trip));
+  } catch (error) {
+    console.error("Error fetching trips:", error);
+    throw error;
+  }
+};
+
+export const saveTrip = async (trip: Trip): Promise<string> => {
+  try {
+    const uid = getCurrentUserId();
+    // Ensure userId is attached
+    const tripWithUser = { ...trip, userId: uid };
+    const data = removeUndefined(tripWithUser);
+    
+    if (trip.id) {
+        await setDoc(doc(db, TRIPS_COLLECTION, trip.id), data);
+        return trip.id;
+    } else {
+        const docRef = await addDoc(collection(db, TRIPS_COLLECTION), data);
+        return docRef.id;
+    }
+  } catch (error) {
+    console.error("Error saving trip:", error);
+    throw error;
+  }
+};
+
+export const deleteTrip = async (id: string) => {
+  try {
+    // 1. Delete the trip document
+    await deleteDoc(doc(db, TRIPS_COLLECTION, id));
+    
+    // 2. Delete associated expenses
+    // Note: In a real app, query by userId AND tripId for safety
+    const expenses = await fetchExpensesForTrip(id);
+    const deletePromises = expenses.map(e => deleteDoc(doc(db, EXPENSES_COLLECTION, e.id)));
+    await Promise.all(deletePromises);
+  } catch (error) {
+    console.error("Error deleting trip:", error);
+    throw error;
+  }
+};
+
+// --- Expenses (Firestore) ---
+
+export const fetchExpensesForTrip = async (tripId: string): Promise<Expense[]> => {
+  try {
+    const uid = getCurrentUserId();
+    const q = query(
+      collection(db, EXPENSES_COLLECTION), 
+      where("tripId", "==", tripId),
+      where("userId", "==", uid) // Security: Only fetch own expenses
+    );
+    const querySnapshot = await getDocs(q);
+    const expenses = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Expense));
+    
+    // Sort in memory (newest first)
+    return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  } catch (error) {
+    console.error("Error fetching expenses:", error);
+    throw error;
+  }
+};
+
+export const saveExpense = async (expense: Expense): Promise<string> => {
+  try {
+    const uid = getCurrentUserId();
+    // Ensure items is an array and userId is attached
+    const safeExpense = {
+        ...expense,
+        userId: uid,
+        items: Array.isArray(expense.items) ? expense.items : []
+    };
+
+    const data = removeUndefined(safeExpense);
+
+    if (safeExpense.id) {
+        await setDoc(doc(db, EXPENSES_COLLECTION, safeExpense.id), data);
+        return safeExpense.id;
+    } else {
+        const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), data);
+        return docRef.id;
+    }
+  } catch (error) {
+    // Check for document size limit error (Firestore limit is 1MB)
+    if (error instanceof Error && error.message.includes("exceeds the maximum allowed size")) {
+         alert("圖片過大無法儲存至雲端，請嘗試重新拍攝或不含圖片儲存。");
+    }
+    console.error("Error saving expense:", error);
+    throw error;
+  }
+};
+
+export const updateExpense = async (updatedExpense: Expense) => {
+  try {
+    if (!updatedExpense.id) throw new Error("Expense ID is missing");
+    const uid = getCurrentUserId();
+    
+    // Ensure ownership consistency
+    const data = removeUndefined({ ...updatedExpense, userId: uid });
+    
+    const expenseRef = doc(db, EXPENSES_COLLECTION, updatedExpense.id);
+    await updateDoc(expenseRef, data);
+  } catch (error) {
+     if (error instanceof Error && error.message.includes("exceeds the maximum allowed size")) {
+         alert("圖片過大無法儲存至雲端。");
+    }
+    console.error("Error updating expense:", error);
+    throw error;
+  }
+};
+
+export const deleteExpense = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, EXPENSES_COLLECTION, id));
+  } catch (error) {
+    console.error("Error deleting expense:", error);
+    throw error;
   }
 };

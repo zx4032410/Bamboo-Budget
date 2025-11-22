@@ -244,6 +244,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ tripId, isOpen, onClo
     const newExpense: Expense = {
       id: initialData?.id || uuidv4(),
       tripId,
+      userId: initialData?.userId || "",
       storeName: storeName || '未命名',
       date: finalDateIso,
       items: parseStringToItems(itemsText),

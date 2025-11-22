@@ -16,7 +16,8 @@
     "uuid": "^13.0.0",
     "recharts": "^3.4.1",
     "date-fns": "^4.1.0",
-    "react-window": "^1.8.10"
+    "react-window": "^1.8.10",
+    "firebase": "^12.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
