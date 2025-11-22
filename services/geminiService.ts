@@ -48,8 +48,13 @@ const saveRateToCache = (currency: string, rate: number) => {
 };
 
 export const analyzeReceipt = async (base64Image: string): Promise<GeminiAnalysisResult> => {
-  // Remove header if present (data:image/jpeg;base64,)
-  const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+  // Detect MIME type from the data URL header (e.g. data:image/png;base64,...)
+  // This allows generic support for various image types (png, webp, heic, etc.)
+  const mimeMatch = base64Image.match(/^data:(.*?);base64,/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+  // Remove header to get pure base64 data
+  const cleanBase64 = base64Image.replace(/^data:.*?;base64,/, "");
 
   const prompt = `
     Analyze this travel receipt or photo of an expense. 
@@ -67,7 +72,7 @@ export const analyzeReceipt = async (base64Image: string): Promise<GeminiAnalysi
       model: 'gemini-2.5-flash',
       contents: {
         parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+          { inlineData: { mimeType: mimeType, data: cleanBase64 } },
           { text: prompt }
         ]
       },

@@ -24,16 +24,19 @@ const ExpenseCard: React.FC<ExpenseCardProps> = ({
   const isDebt = expense.debtAmountTWD > 0;
 
   const handleEdit = (e: React.MouseEvent) => {
+      e.preventDefault();
       e.stopPropagation();
       onEdit(expense);
   };
 
   const handleDelete = (e: React.MouseEvent) => {
+      e.preventDefault();
       e.stopPropagation();
       onDelete(expense.id);
   };
 
   const handleToggleRepaid = (e: React.MouseEvent) => {
+      e.preventDefault();
       e.stopPropagation();
       onToggleRepaid(expense);
   };
@@ -42,7 +45,7 @@ const ExpenseCard: React.FC<ExpenseCardProps> = ({
     <div style={style} className="px-1">
       <div 
           onClick={onToggleExpand}
-          className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-3 cursor-pointer hover:border-primary/30 dark:hover:border-primary/50 transition-colors h-full"
+          className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-3 cursor-pointer hover:border-primary/30 dark:hover:border-primary/50 transition-colors"
       >
         <div className="flex justify-between items-start">
           <div className="flex items-start gap-3 overflow-hidden">
@@ -119,8 +122,9 @@ const ExpenseCard: React.FC<ExpenseCardProps> = ({
               </div>
               
               <button
+                type="button"
                 onClick={handleToggleRepaid}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors relative z-10 ${
                   expense.isRepaid
                     ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
                     : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
@@ -142,14 +146,16 @@ const ExpenseCard: React.FC<ExpenseCardProps> = ({
 
         <div className="flex justify-end mt-auto gap-2 border-t border-slate-50 dark:border-slate-800 pt-2">
           <button 
+              type="button"
               onClick={handleEdit}
-              className="text-slate-400 hover:text-blue-500 transition-colors p-2 rounded-full hover:bg-blue-50 dark:hover:bg-slate-800"
+              className="relative z-10 text-slate-400 hover:text-blue-500 transition-colors p-2 rounded-full hover:bg-blue-50 dark:hover:bg-slate-800"
           >
               <Pencil size={16} />
           </button>
           <button 
+              type="button"
               onClick={handleDelete}
-              className="text-slate-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-slate-800"
+              className="relative z-10 text-slate-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-slate-800"
           >
               <Trash2 size={16} />
           </button>

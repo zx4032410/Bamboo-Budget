@@ -19,8 +19,10 @@ const resizeImage = (file: File): Promise<string> => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
+      const rawBase64 = event.target?.result as string;
       const img = new Image();
-      img.src = event.target?.result as string;
+      img.src = rawBase64;
+      
       img.onload = () => {
         const elem = document.createElement('canvas');
         // Max dimensions to keep size small
@@ -47,7 +49,12 @@ const resizeImage = (file: File): Promise<string> => {
         // Compress to JPEG with 0.7 quality
         resolve(elem.toDataURL('image/jpeg', 0.7)); 
       };
-      img.onerror = (error) => reject(error);
+
+      // Fallback: If browser can't render/compress (e.g. HEIC on some devices), use original
+      img.onerror = () => {
+        console.warn("Image compression failed (unsupported format?), using original file.");
+        resolve(rawBase64);
+      };
     };
     reader.onerror = (error) => reject(error);
   });
@@ -322,8 +329,18 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ tripId, isOpen, onClo
             <div className="space-y-5">
               {image && (
                 <div className="w-full h-32 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden mb-4 relative group">
-                   <img src={image} alt="Receipt" className="w-full h-full object-cover opacity-80" />
-                   <div className="absolute inset-0 flex items-center justify-center">
+                   <img 
+                      src={image} 
+                      alt="Receipt" 
+                      className="w-full h-full object-cover opacity-80" 
+                      onError={(e) => {
+                        // Hide broken image icon if browser can't render format
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).parentElement!.classList.add('flex', 'items-center', 'justify-center');
+                        (e.target as HTMLImageElement).parentElement!.innerHTML += '<span class="text-slate-400 text-xs">無法預覽圖片</span>';
+                      }}
+                   />
+                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <span className="bg-black/50 text-white text-xs px-2 py-1 rounded-full">
                         {initialData ? '已儲存圖片' : '已識別'}
                       </span>
