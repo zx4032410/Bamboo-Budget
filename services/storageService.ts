@@ -1,20 +1,31 @@
 import { Trip, Expense, ThemeMode } from '../types';
 import { db, auth } from '../firebaseConfig';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  query, 
-  where, 
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  where,
   setDoc
 } from 'firebase/firestore';
+
 
 const TRIPS_COLLECTION = 'trips';
 const EXPENSES_COLLECTION = 'expenses';
 const THEME_KEY = 'trippy_theme';
+const LOGIN_PREFERENCE_KEY = 'bamboo_login_preference';
+
+
+// Types
+export type LoginType = 'anonymous' | 'google';
+
+interface LoginPreference {
+  type: LoginType;
+  lastLogin: string; // ISO timestamp
+}
 
 // Helper to remove undefined fields because Firestore throws error on undefined
 const removeUndefined = (obj: any) => {
@@ -25,9 +36,9 @@ const removeUndefined = (obj: any) => {
 
 // Helper to get current User ID
 const getCurrentUserId = () => {
-    const user = auth.currentUser;
-    if (!user) throw new Error("User not authenticated");
-    return user.uid;
+  const user = auth.currentUser;
+  if (!user) throw new Error("User not authenticated");
+  return user.uid;
 };
 
 // --- Theme (Keep in LocalStorage for instant UI load) ---
@@ -44,14 +55,46 @@ export const saveThemePreference = (theme: ThemeMode) => {
   }
 };
 
+// --- Login Preference ---
+export const getLoginPreference = (): LoginPreference | null => {
+  try {
+    const pref = localStorage.getItem(LOGIN_PREFERENCE_KEY);
+    if (!pref) return null;
+    return JSON.parse(pref) as LoginPreference;
+  } catch (e) {
+    console.error("Failed to read login preference", e);
+    return null;
+  }
+};
+
+export const saveLoginPreference = (type: LoginType) => {
+  try {
+    const preference: LoginPreference = {
+      type,
+      lastLogin: new Date().toISOString()
+    };
+    localStorage.setItem(LOGIN_PREFERENCE_KEY, JSON.stringify(preference));
+  } catch (e) {
+    console.error("Failed to save login preference", e);
+  }
+};
+
+export const clearLoginPreference = () => {
+  try {
+    localStorage.removeItem(LOGIN_PREFERENCE_KEY);
+  } catch (e) {
+    console.error("Failed to clear login preference", e);
+  }
+};
+
 // --- Trips (Firestore) ---
 
 export const fetchTrips = async (): Promise<Trip[]> => {
   try {
     const uid = getCurrentUserId();
     const q = query(
-        collection(db, TRIPS_COLLECTION),
-        where("userId", "==", uid)
+      collection(db, TRIPS_COLLECTION),
+      where("userId", "==", uid)
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({
@@ -70,13 +113,13 @@ export const saveTrip = async (trip: Trip): Promise<string> => {
     // Ensure userId is attached
     const tripWithUser = { ...trip, userId: uid };
     const data = removeUndefined(tripWithUser);
-    
+
     if (trip.id) {
-        await setDoc(doc(db, TRIPS_COLLECTION, trip.id), data);
-        return trip.id;
+      await setDoc(doc(db, TRIPS_COLLECTION, trip.id), data);
+      return trip.id;
     } else {
-        const docRef = await addDoc(collection(db, TRIPS_COLLECTION), data);
-        return docRef.id;
+      const docRef = await addDoc(collection(db, TRIPS_COLLECTION), data);
+      return docRef.id;
     }
   } catch (error) {
     console.error("Error saving trip:", error);
@@ -88,7 +131,7 @@ export const deleteTrip = async (id: string) => {
   try {
     // 1. Delete the trip document
     await deleteDoc(doc(db, TRIPS_COLLECTION, id));
-    
+
     // 2. Delete associated expenses
     // Note: In a real app, query by userId AND tripId for safety
     const expenses = await fetchExpensesForTrip(id);
@@ -106,7 +149,7 @@ export const fetchExpensesForTrip = async (tripId: string): Promise<Expense[]> =
   try {
     const uid = getCurrentUserId();
     const q = query(
-      collection(db, EXPENSES_COLLECTION), 
+      collection(db, EXPENSES_COLLECTION),
       where("tripId", "==", tripId),
       where("userId", "==", uid) // Security: Only fetch own expenses
     );
@@ -115,7 +158,7 @@ export const fetchExpensesForTrip = async (tripId: string): Promise<Expense[]> =
       id: doc.id,
       ...doc.data()
     } as Expense));
-    
+
     // Sort in memory (newest first)
     return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
@@ -129,24 +172,24 @@ export const saveExpense = async (expense: Expense): Promise<string> => {
     const uid = getCurrentUserId();
     // Ensure items is an array and userId is attached
     const safeExpense = {
-        ...expense,
-        userId: uid,
-        items: Array.isArray(expense.items) ? expense.items : []
+      ...expense,
+      userId: uid,
+      items: Array.isArray(expense.items) ? expense.items : []
     };
 
     const data = removeUndefined(safeExpense);
 
     if (safeExpense.id) {
-        await setDoc(doc(db, EXPENSES_COLLECTION, safeExpense.id), data);
-        return safeExpense.id;
+      await setDoc(doc(db, EXPENSES_COLLECTION, safeExpense.id), data);
+      return safeExpense.id;
     } else {
-        const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), data);
-        return docRef.id;
+      const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), data);
+      return docRef.id;
     }
   } catch (error) {
     // Check for document size limit error (Firestore limit is 1MB)
     if (error instanceof Error && error.message.includes("exceeds the maximum allowed size")) {
-         alert("圖片過大無法儲存至雲端，請嘗試重新拍攝或不含圖片儲存。");
+      alert("圖片過大無法儲存至雲端，請嘗試重新拍攝或不含圖片儲存。");
     }
     console.error("Error saving expense:", error);
     throw error;
@@ -157,15 +200,15 @@ export const updateExpense = async (updatedExpense: Expense) => {
   try {
     if (!updatedExpense.id) throw new Error("Expense ID is missing");
     const uid = getCurrentUserId();
-    
+
     // Ensure ownership consistency
     const data = removeUndefined({ ...updatedExpense, userId: uid });
-    
+
     const expenseRef = doc(db, EXPENSES_COLLECTION, updatedExpense.id);
     await updateDoc(expenseRef, data);
   } catch (error) {
-     if (error instanceof Error && error.message.includes("exceeds the maximum allowed size")) {
-         alert("圖片過大無法儲存至雲端。");
+    if (error instanceof Error && error.message.includes("exceeds the maximum allowed size")) {
+      alert("圖片過大無法儲存至雲端。");
     }
     console.error("Error updating expense:", error);
     throw error;
