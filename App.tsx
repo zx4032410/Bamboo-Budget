@@ -994,19 +994,19 @@ const App: React.FC = () => {
                         />
                         <div className="flex flex-col gap-3 mb-6">
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 ml-1">開始日期</label>
+                                <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2 ml-1">開始日期</label>
                                 <input
                                     type="date"
-                                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
+                                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none"
                                     value={newTripStart}
                                     onChange={e => { setNewTripStart(e.target.value); if (addTripError) setAddTripError(null); }}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 ml-1">結束日期</label>
+                                <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2 ml-1">結束日期</label>
                                 <input
                                     type="date"
-                                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-sm transition-colors"
+                                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none"
                                     value={newTripEnd}
                                     onChange={e => { setNewTripEnd(e.target.value); if (addTripError) setAddTripError(null); }}
                                 />
