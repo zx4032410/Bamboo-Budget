@@ -17,11 +17,11 @@ const getRateFromCache = (currency: string): number | null => {
   try {
     const cacheRaw = localStorage.getItem(RATE_CACHE_KEY);
     if (!cacheRaw) return null;
-    
+
     const cache: RateCache = JSON.parse(cacheRaw);
     const entry = cache[currency];
     const today = new Date().toISOString().split('T')[0];
-    
+
     if (entry && entry.date === today) {
       return entry.rate;
     }
@@ -35,12 +35,12 @@ const saveRateToCache = (currency: string, rate: number) => {
   try {
     const cacheRaw = localStorage.getItem(RATE_CACHE_KEY);
     const cache: RateCache = cacheRaw ? JSON.parse(cacheRaw) : {};
-    
+
     cache[currency] = {
       rate,
       date: new Date().toISOString().split('T')[0]
     };
-    
+
     localStorage.setItem(RATE_CACHE_KEY, JSON.stringify(cache));
   } catch (e) {
     console.error("Failed to save rate cache", e);
@@ -48,6 +48,28 @@ const saveRateToCache = (currency: string, rate: number) => {
 };
 
 export const analyzeReceipt = async (base64Image: string): Promise<GeminiAnalysisResult> => {
+  const { hasReachedDailyLimit, incrementApiUsage, getUserApiKey } = await import('./storageService');
+  const { auth } = await import('../firebaseConfig');
+
+  // Get user's API key if available
+  const userApiKey = getUserApiKey();
+
+  // Admin email whitelist (no usage limit)
+  const ADMIN_EMAILS = ['zx4032410@gmail.com'];
+  const currentUserEmail = auth.currentUser?.email;
+  const isAdmin = currentUserEmail && ADMIN_EMAILS.includes(currentUserEmail);
+
+  // If user doesn't have their own key and is not admin, check daily limit
+  if (!userApiKey && !isAdmin) {
+    if (hasReachedDailyLimit()) {
+      throw new Error('DAILY_LIMIT_REACHED');
+    }
+  }
+
+  // Use user's key or default key
+  const apiKey = userApiKey || process.env.API_KEY;
+  const ai = new GoogleGenAI({ apiKey: apiKey });
+
   // Detect MIME type from the data URL header (e.g. data:image/png;base64,...)
   // This allows generic support for various image types (png, webp, heic, etc.)
   const mimeMatch = base64Image.match(/^data:(.*?);base64,/);
@@ -85,17 +107,17 @@ export const analyzeReceipt = async (base64Image: string): Promise<GeminiAnalysi
             date: { type: Type.STRING, description: "Date in YYYY-MM-DD format" },
             totalAmount: { type: Type.NUMBER, description: "Total numerical amount" },
             currency: { type: Type.STRING, description: "Currency code like JPY, USD" },
-            items: { 
-              type: Type.ARRAY, 
-              items: { 
+            items: {
+              type: Type.ARRAY,
+              items: {
                 type: Type.OBJECT,
                 properties: {
-                    originalName: { type: Type.STRING, description: "Item name exactly as shown on receipt" },
-                    name: { type: Type.STRING, description: "Traditional Chinese translation" }
+                  originalName: { type: Type.STRING, description: "Item name exactly as shown on receipt" },
+                  name: { type: Type.STRING, description: "Traditional Chinese translation" }
                 },
                 required: ["originalName", "name"]
               },
-              description: "List of purchased items with original text and translation" 
+              description: "List of purchased items with original text and translation"
             },
             exchangeRateToTWD: { type: Type.NUMBER, description: "Estimated exchange rate to TWD" }
           },
@@ -106,7 +128,12 @@ export const analyzeReceipt = async (base64Image: string): Promise<GeminiAnalysi
 
     const text = response.text;
     if (!text) throw new Error("No response from Gemini");
-    
+
+    // Success! Only increment usage count if using shared key AND not admin
+    if (!userApiKey && !isAdmin) {
+      incrementApiUsage();
+    }
+
     return JSON.parse(text) as GeminiAnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
@@ -163,7 +190,7 @@ export const fetchExchangeRate = async (currency: string): Promise<{ rate: numbe
       saveRateToCache(currency.toUpperCase(), rate);
       return { rate, source: 'Google Search' };
     }
-    
+
     return { rate: 1, source: 'Failed' };
   } catch (error) {
     console.error("Exchange Rate Fetch Error:", error);

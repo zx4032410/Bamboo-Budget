@@ -87,6 +87,96 @@ export const clearLoginPreference = () => {
   }
 };
 
+// --- API Usage Tracking ---
+const API_USAGE_KEY = 'bamboo_api_usage';
+const DAILY_API_LIMIT = 2;
+
+interface ApiUsage {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export const getApiUsageToday = (): number => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem(API_USAGE_KEY);
+
+    if (!stored) return 0;
+
+    const usage: ApiUsage = JSON.parse(stored);
+
+    // 如果是新的一天，重置計數
+    if (usage.date !== today) {
+      return 0;
+    }
+
+    return usage.count;
+  } catch (e) {
+    console.error("Failed to read API usage", e);
+    return 0;
+  }
+};
+
+export const incrementApiUsage = (): void => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const current = getApiUsageToday();
+
+    const usage: ApiUsage = {
+      date: today,
+      count: current + 1
+    };
+
+    localStorage.setItem(API_USAGE_KEY, JSON.stringify(usage));
+  } catch (e) {
+    console.error("Failed to increment API usage", e);
+  }
+};
+
+export const hasReachedDailyLimit = (): boolean => {
+  return getApiUsageToday() >= DAILY_API_LIMIT;
+};
+
+export const getRemainingApiCalls = (): number => {
+  const used = getApiUsageToday();
+  return Math.max(0, DAILY_API_LIMIT - used);
+};
+
+// --- User API Key ---
+const USER_API_KEY_STORAGE = 'bamboo_user_api_key';
+
+export const getUserApiKey = (): string | null => {
+  try {
+    return localStorage.getItem(USER_API_KEY_STORAGE);
+  } catch (e) {
+    console.error("Failed to read user API key", e);
+    return null;
+  }
+};
+
+export const saveUserApiKey = (apiKey: string): void => {
+  try {
+    if (apiKey.trim()) {
+      localStorage.setItem(USER_API_KEY_STORAGE, apiKey.trim());
+    }
+  } catch (e) {
+    console.error("Failed to save user API key", e);
+  }
+};
+
+export const clearUserApiKey = (): void => {
+  try {
+    localStorage.removeItem(USER_API_KEY_STORAGE);
+  } catch (e) {
+    console.error("Failed to clear user API key", e);
+  }
+};
+
+export const hasUserApiKey = (): boolean => {
+  const key = getUserApiKey();
+  return key !== null && key.length > 0;
+};
+
 // --- Trips (Firestore) ---
 
 export const fetchTrips = async (): Promise<Trip[]> => {

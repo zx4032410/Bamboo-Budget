@@ -34,6 +34,8 @@ interface SettingsViewProps {
 const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange, user }) => {
     const [isLinking, setIsLinking] = useState(false);
     const [linkError, setLinkError] = useState<string | null>(null);
+    const [userApiKey, setUserApiKey] = useState(Storage.getUserApiKey() || '');
+    const [isEditingKey, setIsEditingKey] = useState(false);
 
     const handleLinkGoogle = async () => {
         if (!user) return;
@@ -223,6 +225,119 @@ const SettingsView: React.FC<SettingsViewProps> = ({ theme, onThemeChange, user 
                             <Loader2 size={24} className="animate-spin mx-auto text-primary" />
                         </div>
                     )}
+                </div>
+
+                {/* API Usage Section */}
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800 mb-6">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">AI 功能設定</h3>
+
+                    {/* API Key Input */}
+                    <div className="mb-4">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                            Gemini API Key（選填）
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                                type={isEditingKey ? "text" : "password"}
+                                placeholder="填寫您的 API Key 即可無限制使用"
+                                value={userApiKey}
+                                onChange={(e) => setUserApiKey(e.target.value)}
+                                className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <button
+                                onClick={() => setIsEditingKey(!isEditingKey)}
+                                className="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
+                                title={isEditingKey ? "隱藏" : "顯示"}
+                            >
+                                {isEditingKey ? '👁️' : '🔒'}
+                            </button>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                            <button
+                                onClick={() => {
+                                    Storage.saveUserApiKey(userApiKey);
+                                    alert('✅ API Key 已儲存！\n\n現在您可以無限制使用 AI 功能。');
+                                }}
+                                disabled={!userApiKey.trim()}
+                                className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {Storage.hasUserApiKey() ? '更新' : '儲存'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (confirm('確定要清除已儲存的 API Key 嗎？\n\n清除後將恢復使用共享額度（2次/天）。')) {
+                                        Storage.clearUserApiKey();
+                                        setUserApiKey('');
+                                        alert('✅ API Key 已清除');
+                                    }
+                                }}
+                                disabled={!Storage.hasUserApiKey()}
+                                className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                清除
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">
+                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                🔗 前往 Google AI Studio 取得 API Key
+                            </a>
+                        </p>
+                    </div>
+
+
+                    {/* Usage Status */}
+                    {(() => {
+                        if (Storage.hasUserApiKey()) {
+                            return (
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                                        <span className="text-2xl">✅</span>
+                                        <div>
+                                            <div className="font-bold">使用您自己的 API Key</div>
+                                            <div className="text-sm">無使用次數限制</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        } else if (user?.email === 'zx4032410@gmail.com') {
+                            return (
+                                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl">
+                                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                                        <span className="text-2xl">👑</span>
+                                        <div>
+                                            <div className="font-bold">管理員模式</div>
+                                            <div className="text-sm">無使用次數限制</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        } else {
+                            return (
+                                <>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                                        共享額度：每日 2 次
+                                    </p>
+                                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                                        <div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">今日使用狀態</div>
+                                            <div className="font-bold text-slate-900 dark:text-white">
+                                                已用 {Storage.getApiUsageToday()} / 2 次
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">剩餘額度</div>
+                                            <div className={`font-bold text-2xl ${Storage.getRemainingApiCalls() > 0 ? 'text-primary' : 'text-orange-500'}`}>
+                                                {Storage.getRemainingApiCalls()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-400 dark:text-slate-600 mt-3">
+                                        💡 每日午夜自動重置
+                                    </p>
+                                </>
+                            );
+                        }
+                    })()}
                 </div>
 
                 {/* Appearance Section */}
