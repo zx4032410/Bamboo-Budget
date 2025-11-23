@@ -990,25 +990,44 @@ const App: React.FC = () => {
                             placeholder="旅程名稱 (例: 東京五日遊)"
                             value={newTripName}
                             onChange={e => { setNewTripName(e.target.value); if (addTripError) setAddTripError(null); }}
-                            autoFocus
                         />
                         <div className="flex flex-col gap-3 mb-6">
                             <div>
                                 <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2 ml-1">開始日期</label>
                                 <input
                                     type="date"
-                                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none"
+                                    className="w-full px-3 py-3.5 min-h-[48px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer"
                                     value={newTripStart}
                                     onChange={e => { setNewTripStart(e.target.value); if (addTripError) setAddTripError(null); }}
+                                    onClick={(e) => {
+                                        const input = e.currentTarget;
+                                        if (input.showPicker) {
+                                            try {
+                                                input.showPicker();
+                                            } catch (error) {
+                                                // showPicker() might fail in some contexts, silently ignore
+                                            }
+                                        }
+                                    }}
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2 ml-1">結束日期</label>
                                 <input
                                     type="date"
-                                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none"
+                                    className="w-full px-3 py-3.5 min-h-[48px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-base transition-colors focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer"
                                     value={newTripEnd}
                                     onChange={e => { setNewTripEnd(e.target.value); if (addTripError) setAddTripError(null); }}
+                                    onClick={(e) => {
+                                        const input = e.currentTarget;
+                                        if (input.showPicker) {
+                                            try {
+                                                input.showPicker();
+                                            } catch (error) {
+                                                // showPicker() might fail in some contexts, silently ignore
+                                            }
+                                        }
+                                    }}
                                 />
                             </div>
                         </div>
